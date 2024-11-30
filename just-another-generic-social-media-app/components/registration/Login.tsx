@@ -1,3 +1,5 @@
+// components/registration/Login.tsx
+
 "use client";
 
 import { useState } from "react";
@@ -17,17 +19,26 @@ import { Label } from "@/components/ui/label";
 export default function Login() {
   const { login } = useAuth();
   const router = useRouter();
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
+  const [username, setUsername] = useState<string>("");
+  const [password, setPassword] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState<boolean>(false);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (await login(username, password)) {
+    setLoading(true);
+    setError(null);
+    const success = await login(username, password);
+    setLoading(false);
+    if (success) {
       router.push("/main");
     } else {
       setError("Invalid username or password");
     }
+  };
+
+  const handleGoogleLogin = () => {
+    window.location.href = `${process.env.NEXT_PUBLIC_BACKEND_URL}/auth/google`;
   };
 
   return (
@@ -45,9 +56,11 @@ export default function Login() {
             <Label htmlFor="username">Username</Label>
             <Input
               id="username"
+              type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               placeholder="Enter your username"
+              required
             />
           </div>
           <div className="space-y-2">
@@ -58,9 +71,17 @@ export default function Login() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Enter your password"
+              required
             />
           </div>
-          <Button type="submit">Login</Button>
+          <div className="space-y-2 space-x-2">
+            <Button type="submit" disabled={loading}>
+              {loading ? "Logging in..." : "Login"}
+            </Button>
+            <Button variant="outline" onClick={handleGoogleLogin}>
+              Login with Google
+            </Button>
+          </div>
         </form>
       </CardContent>
     </Card>

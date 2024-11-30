@@ -1,170 +1,161 @@
 // context/AuthContext.tsx
+
 "use client";
 
-import {
+import React, {
   createContext,
-  ReactNode,
-  useContext,
-  useEffect,
   useState,
+  useEffect,
+  useContext,
+  ReactNode,
 } from "react";
-import { useRouter } from "next/navigation";
+import { apiFetch } from "@/utils/api";
 
 interface User {
-  id: number;
   username: string;
-  headline: string;
+  email: string;
+  dob: string;
+  phone: string;
+  zipcode: string;
+  avatar?: string;
+  // Add other user fields as necessary
 }
 
-interface AuthContextType {
+interface AuthContextProps {
   user: User | null;
+  loading: boolean;
   login: (username: string, password: string) => Promise<boolean>;
-  logout: () => void;
-  register: (username: string, password: string) => Promise<string | null>;
-  updateHeadline: (headline: string) => void;
+  registerUser: (data: RegisterData) => Promise<string | null>;
+  logout: () => Promise<void>;
 }
 
-export const AuthContext = createContext<AuthContextType | undefined>(
-  undefined
-);
+interface RegisterData {
+  username: string;
+  password: string;
+  email: string;
+  phone: string;
+  zipcode: string;
+  dob: string;
+}
+
+const AuthContext = createContext<AuthContextProps>({
+  user: null,
+  loading: true,
+  login: async () => false,
+  registerUser: async () => null,
+  logout: async () => {},
+});
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
-  const router = useRouter();
+  const [loading, setLoading] = useState<boolean>(true);
 
-  // Load user from localStorage on mount
-  useEffect(() => {
-    const storedUser = localStorage.getItem("currentUser");
-    if (storedUser) {
-      setUser(JSON.parse(storedUser));
+  const fetchUser = async () => {
+    try {
+      const { status, data } = await apiFetch({
+        endpoint: "/api/user",
+        method: "GET",
+      });
+      if (status === 200) {
+        setUser(data.user);
+      } else {
+        setUser(null);
+      }
+    } catch (error) {
+      console.error("Error fetching user:", error);
+      setUser(null);
+    } finally {
+      setLoading(false);
     }
+  };
+
+  useEffect(() => {
+    fetchUser();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Login Function
   const login = async (
     username: string,
     password: string
   ): Promise<boolean> => {
     try {
-      // Fetch users from JSONPlaceholder
-      const response = await fetch(
-        `https://jsonplaceholder.typicode.com/users`
-      );
-      const users = await response.json();
+      const { status, data } = await apiFetch({
+        endpoint: "/login",
+        method: "POST",
+        body: { username, password },
+      });
 
-      // Find user with matching username and password (using address.street as password)
-      const foundUser = users.find(
-        (u: any) => u.username === username && u.address.street === password
-      );
-
-      if (foundUser) {
-        const userData: User = {
-          id: foundUser.id,
-          username: foundUser.username,
-          headline: foundUser.company.catchPhrase, // Set headline to company catchPhrase
-        };
-        localStorage.setItem("currentUser", JSON.stringify(userData));
-        setUser(userData);
+      if (status === 200) {
+        setUser(data.user);
         return true;
+      } else {
+        console.error("Login failed:", data.message);
+        return false;
       }
-
-      // Check registered users in localStorage
-      const registeredUsers = JSON.parse(localStorage.getItem("users") || "[]");
-      const foundRegisteredUser = registeredUsers.find(
-        (u: any) => u.username === username && u.address.street === password
-      );
-
-      if (foundRegisteredUser) {
-        const userData: User = {
-          id: foundRegisteredUser.id,
-          username: foundRegisteredUser.username,
-          headline: foundRegisteredUser.headline,
-        };
-        localStorage.setItem("currentUser", JSON.stringify(userData));
-        setUser(userData);
-        return true;
-      }
-
-      return false; // User not found
     } catch (error) {
       console.error("Login error:", error);
       return false;
     }
   };
 
-  // Register Function
-  const register = async (
-    username: string,
-    password: string
-  ): Promise<string | null> => {
-    const existingUsers = JSON.parse(localStorage.getItem("users") || "[]");
+  const registerUser = async (data: RegisterData): Promise<string | null> => {
+    try {
+      const { status, data: response } = await apiFetch({
+        endpoint: "/register",
+        method: "POST",
+        body,
+      });
 
-    // Check if username already exists
-    const usernameExists =
-      existingUsers.some(
-        (user: { username: string }) => user.username === username
-      ) || false;
-
-    if (usernameExists) {
-      return "Username already exists. Please choose a different one.";
+      if (status === 201) {
+        // Automatically log in the user after successful registration
+        const loginSuccess = await login(data.username, data.password);
+        if (loginSuccess) {
+          return null;
+        } else {
+          return "Registration successful, but automatic login failed.";
+        }
+      } else {
+        // Handle validation errors or other errors from the backend
+        if (response.errors) {
+          // Aggregate error messages
+          const messages = response.errors
+            .map((err: any) => err.msg)
+            .join(", ");
+          return messages;
+        }
+        return response.message || "Registration failed.";
+      }
+    } catch (error) {
+      console.error("Registration error:", error);
+      return "Registration failed due to a server error.";
     }
-
-    // Create new user with default headline
-    const newUser: User & { address: { street: string } } = {
-      id: Date.now(),
-      username,
-      headline: "Welcome to my profile!", // Default headline for new users
-      address: { street: password }, // Using address.street as password
-    };
-
-    existingUsers.push(newUser);
-    localStorage.setItem("users", JSON.stringify(existingUsers));
-    localStorage.setItem("currentUser", JSON.stringify(newUser));
-    setUser({
-      id: newUser.id,
-      username: newUser.username,
-      headline: newUser.headline,
-    });
-
-    router.push("/main"); // Redirect to main page after registration
-    return null;
   };
 
-  // Logout Function
-  const logout = () => {
-    localStorage.removeItem("currentUser");
-    setUser(null);
-    router.push("/");
-  };
+  const logout = async (): Promise<void> => {
+    try {
+      const { status, data } = await apiFetch({
+        endpoint: "/logout",
+        method: "PUT",
+      });
 
-  // Update Headline Function
-  const updateHeadline = (headline: string) => {
-    if (user) {
-      const updatedUser: User = { ...user, headline };
-      setUser(updatedUser);
-      localStorage.setItem("currentUser", JSON.stringify(updatedUser));
-
-      // Update in registered users if applicable
-      const existingUsers = JSON.parse(localStorage.getItem("users") || "[]");
-      const updatedUsers = existingUsers.map(
-        (u: User & { address: { street: string } }) =>
-          u.id === user.id ? { ...u, headline } : u
-      );
-      localStorage.setItem("users", JSON.stringify(updatedUsers));
+      if (status === 200) {
+        setUser(null);
+      } else {
+        console.error("Logout failed:", data.message);
+      }
+    } catch (error) {
+      console.error("Logout error:", error);
     }
   };
 
   return (
     <AuthContext.Provider
-      value={{ user, login, logout, register, updateHeadline }}
+      value={{ user, loading, login, registerUser, logout }}
     >
       {children}
     </AuthContext.Provider>
   );
 };
 
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (!context) throw new Error("useAuth must be used within an AuthProvider");
-  return context;
-};
+// Custom hook for accessing the AuthContext
+export const useAuth = () => useContext(AuthContext);

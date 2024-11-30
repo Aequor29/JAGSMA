@@ -19,56 +19,19 @@ export default function ProfilePage() {
   const [user, setUser] = useState<UserData | null>(null);
   const [userID, setUserID] = useState<number | null>(null);
 
-  // Fetch userID from localStorage on component mount
-  useEffect(() => {
-    const currentUser = localStorage.getItem("currentUser");
-    const id = currentUser ? JSON.parse(currentUser).id : null;
-    setUserID(id);
-  }, []);
-
-  // Fetch user data from Placeholder API based on userID
+  // Fetch user data from the server using the cookie stored in the browser
   useEffect(() => {
     const fetchUserData = async () => {
-      if (userID && userID < 10) {
-        try {
-          const response = await fetch(
-            `https://jsonplaceholder.typicode.com/users/${userID}`
-          );
-          if (!response.ok) {
-            throw new Error("Network response was not ok");
-          }
-          const data = await response.json();
-          setUser({
-            id: data.id,
-            username: data.username,
-            email: data.email,
-            phone: data.phone,
-            zipcode: data.address.zipcode,
-            avatarUrl: `https://placekitten.com/200/200?image=${data.id}`,
-          });
-        } catch (error) {
-          console.error("Failed to fetch user data:", error);
-          setUser(null);
-        }
-      } else if (userID) {
-        const storedUser = localStorage.getItem("currentUser");
-        if (storedUser) {
-          const parsedUser: UserData = JSON.parse(storedUser);
-          setUser({
-            id: parsedUser.id,
-            username: parsedUser.username,
-            email: "default@gmail.com",
-            phone: "1234567890",
-            zipcode: "12345",
-            avatarUrl: "https://placekitten.com/200/200?image=${data.id}",
-          });
-        } else {
-          console.warn("No userID found in localStorage.");
-          setUser(null);
-        }
-      }
+      let userData = {
+        id: 1,
+        username: "John Doe",
+        email: "john.doe@example.com",
+        phone: "000000000000",
+        zipcode: "12345",
+        avatarUrl: "https://example.com/avatar.jpg",
+      };
+      setUser(userData);
     };
-
     fetchUserData();
   }, [userID]);
 
@@ -83,15 +46,8 @@ export default function ProfilePage() {
         updatedUser.zipcode = newUserData.zipcode as string;
 
       // Handle avatar update
-      const avatarFile = formData.get("avatar") as File | null;
-      if (avatarFile && avatarFile.type.startsWith("image/")) {
-        // For simplicity, we'll use a local URL. In a real app, you'd upload the image.
-        const avatarUrl = URL.createObjectURL(avatarFile);
-        updatedUser.avatarUrl = avatarUrl;
-      }
-
-      setUser(updatedUser);
-      localStorage.setItem("currentUser", JSON.stringify(updatedUser));
+      // use cloudinary to upload the image and get the url
+      // update the user to our server with new profile data
     }
   };
 

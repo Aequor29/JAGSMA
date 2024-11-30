@@ -1,7 +1,9 @@
+// components/registration/SignUp.tsx
+
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm } from "react-hook-form";
+import { useForm, SubmitHandler } from "react-hook-form";
 import { z } from "zod";
 import { useAuth } from "@/app/context/AuthContext";
 import {
@@ -25,42 +27,46 @@ import {
 } from "@/components/ui/form";
 import { useState } from "react";
 
-// Zod schema for validation
+// Updated Zod schema to match backend registration schema
 const formSchema = z
   .object({
-    username: z.string().min(2, {
-      message: "Username must be at least 2 characters.",
-    }),
+    username: z
+      .string()
+      .min(2, {
+        message: "Username must be at least 2 characters.",
+      })
+      .regex(/^[a-zA-Z0-9]+$/, {
+        message: "Username must be alphanumeric.",
+      }),
     email: z.string().email({ message: "Invalid email address" }),
-    phone: z.string().regex(/^\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}$/, {
-      message: "Invalid phone number format",
+    dob: z.string().refine(
+      (date) => {
+        return !isNaN(Date.parse(date));
+      },
+      { message: "Invalid date of birth" }
+    ),
+    phone: z.string().regex(/^\d{3}-\d{3}-\d{4}$/, {
+      message: "Phone must be in format XXX-XXX-XXXX",
     }),
     zipcode: z
       .string()
-      .regex(/^\d{5}(-\d{4})?$/, { message: "Invalid ZIP code" }),
+      .regex(/^\d{5}$/, { message: "Zipcode must be 5 digits" }),
     password: z
       .string()
-      .min(8, { message: "Password must be at least 8 characters" }),
+      .min(4, { message: "Password must be at least 4 characters" }),
     confirmPassword: z
       .string()
-      .min(8, { message: "Password must be at least 8 characters" }),
+      .min(4, { message: "Password must be at least 4 characters" }),
   })
   .refine((data) => data.password === data.confirmPassword, {
     message: "Passwords do not match",
     path: ["confirmPassword"],
   });
 
-interface FormData {
-  email: string;
-  phone: string;
-  zipcode: string;
-  username: string;
-  password: string;
-  confirmPassword: string;
-}
+type FormData = z.infer<typeof formSchema>;
 
 export default function SignUp() {
-  const { register } = useAuth();
+  const { registerUser } = useAuth();
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -70,14 +76,29 @@ export default function SignUp() {
       email: "",
       phone: "",
       zipcode: "",
+      dob: "",
     },
   });
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState<boolean>(false);
 
-  const handleSingup = async (data: FormData) => {
-    const errorMessage = await register(data.username, data.password);
+  const handleSignup: SubmitHandler<FormData> = async (data) => {
+    setLoading(true);
+    setError(null);
+    const { username, password, email, phone, zipcode, dob } = data;
+    const errorMessage = await registerUser({
+      username,
+      password,
+      email,
+      phone,
+      zipcode,
+      dob,
+    });
+    setLoading(false);
     if (errorMessage) {
       setError(errorMessage);
+    } else {
+      // Registration successful, redirect or perform other actions
     }
   };
 
@@ -90,7 +111,7 @@ export default function SignUp() {
       <CardContent>
         <Form {...form}>
           <form
-            onSubmit={form.handleSubmit(handleSingup)}
+            onSubmit={form.handleSubmit(handleSignup)}
             className="space-y-4"
           >
             {error && <p className="text-red-500">{error}</p>}
@@ -101,7 +122,11 @@ export default function SignUp() {
                 <FormItem>
                   <FormLabel>Username</FormLabel>
                   <FormControl>
-                    <Input placeholder="Enter your username" {...field} />
+                    <Input
+                      placeholder="Enter your username"
+                      {...field}
+                      required
+                    />
                   </FormControl>
                   <FormMessage>
                     {form.formState.errors.username?.message?.toString()}
@@ -109,7 +134,6 @@ export default function SignUp() {
                 </FormItem>
               )}
             />
-            {/* Other fields (email, phone, etc.) */}
             <FormField
               control={form.control}
               name="email"
@@ -117,7 +141,12 @@ export default function SignUp() {
                 <FormItem>
                   <FormLabel>Email</FormLabel>
                   <FormControl>
-                    <Input placeholder="Enter your email" {...field} />
+                    <Input
+                      type="email"
+                      placeholder="Enter your email"
+                      {...field}
+                      required
+                    />
                   </FormControl>
                   <FormMessage>
                     {form.formState.errors.email?.message?.toString()}
@@ -125,8 +154,21 @@ export default function SignUp() {
                 </FormItem>
               )}
             />
-
-            {/* Phone number field */}
+            <FormField
+              control={form.control}
+              name="dob"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Date of Birth</FormLabel>
+                  <FormControl>
+                    <Input type="date" {...field} required />
+                  </FormControl>
+                  <FormMessage>
+                    {form.formState.errors.dob?.message?.toString()}
+                  </FormMessage>
+                </FormItem>
+              )}
+            />
             <FormField
               control={form.control}
               name="phone"
@@ -134,7 +176,7 @@ export default function SignUp() {
                 <FormItem>
                   <FormLabel>Phone</FormLabel>
                   <FormControl>
-                    <Input placeholder="Enter your phone number" {...field} />
+                    <Input placeholder="123-456-7890" {...field} required />
                   </FormControl>
                   <FormMessage>
                     {form.formState.errors.phone?.message?.toString()}
@@ -142,8 +184,6 @@ export default function SignUp() {
                 </FormItem>
               )}
             />
-
-            {/* ZIP code field */}
             <FormField
               control={form.control}
               name="zipcode"
@@ -151,7 +191,7 @@ export default function SignUp() {
                 <FormItem>
                   <FormLabel>ZIP Code</FormLabel>
                   <FormControl>
-                    <Input placeholder="Enter your ZIP code" {...field} />
+                    <Input placeholder="12345" {...field} required />
                   </FormControl>
                   <FormMessage>
                     {form.formState.errors.zipcode?.message?.toString()}
@@ -159,7 +199,6 @@ export default function SignUp() {
                 </FormItem>
               )}
             />
-
             <FormField
               control={form.control}
               name="password"
@@ -167,7 +206,12 @@ export default function SignUp() {
                 <FormItem>
                   <FormLabel>Password</FormLabel>
                   <FormControl>
-                    <Input type="password" placeholder="********" {...field} />
+                    <Input
+                      type="password"
+                      placeholder="********"
+                      {...field}
+                      required
+                    />
                   </FormControl>
                   <FormMessage>
                     {form.formState.errors.password?.message?.toString()}
@@ -182,7 +226,12 @@ export default function SignUp() {
                 <FormItem>
                   <FormLabel>Confirm Password</FormLabel>
                   <FormControl>
-                    <Input type="password" placeholder="********" {...field} />
+                    <Input
+                      type="password"
+                      placeholder="********"
+                      {...field}
+                      required
+                    />
                   </FormControl>
                   <FormMessage>
                     {form.formState.errors.confirmPassword?.message?.toString()}
@@ -191,7 +240,9 @@ export default function SignUp() {
               )}
             />
             <CardFooter className="flex justify-between">
-              <Button type="submit">Sign Up</Button>
+              <Button type="submit" disabled={loading}>
+                {loading ? "Signing up..." : "Sign Up"}
+              </Button>
             </CardFooter>
           </form>
         </Form>

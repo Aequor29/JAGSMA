@@ -1,3 +1,5 @@
+// components/Navbar.tsx
+
 "use client";
 
 import Link from "next/link";
@@ -12,9 +14,21 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ModeToggle } from "@/components/dark-mode/ModeToggle";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 
 export default function Navbar() {
-  const { user, logout } = useAuth();
+  const { user, logout, loading } = useAuth();
+  const router = useRouter();
+
+  const handleLogout = async () => {
+    await logout();
+    router.push("/registration");
+  };
+
+  useEffect(() => {
+    // Optionally, handle side effects based on user state
+  }, [user]);
 
   return (
     <nav className="border-b">
@@ -28,13 +42,13 @@ export default function Navbar() {
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" className="relative h-8 w-8 rounded-full">
                 <Avatar className="h-8 w-8">
-                  <AvatarImage
-                    src="/placeholder.svg?height=32&width=32"
-                    alt="@user"
-                  />
-                  <AvatarFallback>
-                    {user ? user.username.charAt(0) : "U"}
-                  </AvatarFallback>
+                  {user && user.avatar ? (
+                    <AvatarImage src={user.avatar} alt={user.username} />
+                  ) : (
+                    <AvatarFallback>
+                      {user ? user.username.charAt(0).toUpperCase() : "U"}
+                    </AvatarFallback>
+                  )}
                 </Avatar>
               </Button>
             </DropdownMenuTrigger>
@@ -47,7 +61,7 @@ export default function Navbar() {
                       <span>Profile</span>
                     </Link>
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={logout}>
+                  <DropdownMenuItem onClick={handleLogout}>
                     <LogOut className="mr-2 h-4 w-4" />
                     <span>Log out</span>
                   </DropdownMenuItem>
