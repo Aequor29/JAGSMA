@@ -11,7 +11,8 @@ type UserData = {
   email: string;
   phone: string;
   zipcode: string;
-  avatarUrl: string;
+  dob: Date;
+  avatarUrl?: string;
 };
 
 type ProfileFormProps = {
@@ -89,6 +90,16 @@ export function ProfileForm({ user, updateProfile }: ProfileFormProps) {
         {errors.zipcode && (
           <p className="text-red-500 text-sm">{errors.zipcode}</p>
         )}
+      </div>
+      <div className="space-y-2">
+        <Label>Date of Birth</Label>
+        <Input
+          id="dob"
+          name="dob"
+          type="date"
+          defaultValue={user.dob.toISOString().split("T")[0]}
+          disabled
+        />
       </div>
       <div className="space-y-2">
         <Label htmlFor="password">New Password</Label>

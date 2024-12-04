@@ -1,5 +1,3 @@
-// context/AuthContext.tsx
-
 "use client";
 
 import React, {
@@ -10,20 +8,20 @@ import React, {
   ReactNode,
 } from "react";
 import { apiFetch } from "@/utils/api";
+import { cookies } from "next/headers";
 
 interface User {
   username: string;
-  email: string;
-  dob: string;
-  phone: string;
-  zipcode: string;
+  email?: string;
+  dob?: string;
+  phone?: string;
+  zipcode?: string;
   avatar?: string;
-  // Add other user fields as necessary
 }
 
 interface AuthContextProps {
   user: User | null;
-  loading: boolean;
+  isLoading: boolean; // Renamed from 'loading' to 'isLoading'
   login: (username: string, password: string) => Promise<boolean>;
   registerUser: (data: RegisterData) => Promise<string | null>;
   logout: () => Promise<void>;
@@ -40,7 +38,7 @@ interface RegisterData {
 
 const AuthContext = createContext<AuthContextProps>({
   user: null,
-  loading: true,
+  isLoading: true, // Updated default value
   login: async () => false,
   registerUser: async () => null,
   logout: async () => {},
@@ -48,7 +46,7 @@ const AuthContext = createContext<AuthContextProps>({
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [isLoading, setIsLoading] = useState<boolean>(true); // Renamed state
 
   const fetchUser = async () => {
     try {
@@ -65,7 +63,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       console.error("Error fetching user:", error);
       setUser(null);
     } finally {
-      setLoading(false);
+      setIsLoading(false); // Updated state
     }
   };
 
@@ -78,6 +76,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     username: string,
     password: string
   ): Promise<boolean> => {
+    setIsLoading(true); // Start loading
     try {
       const { status, data } = await apiFetch({
         endpoint: "/login",
@@ -86,7 +85,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       });
 
       if (status === 200) {
-        setUser(data.user);
+        const currUser: User = { username: data.username };
+        console.log(currUser);
+        setUser(currUser);
         return true;
       } else {
         console.error("Login failed:", data.message);
@@ -95,15 +96,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     } catch (error) {
       console.error("Login error:", error);
       return false;
+    } finally {
+      setIsLoading(false); // End loading
     }
   };
 
   const registerUser = async (data: RegisterData): Promise<string | null> => {
+    setIsLoading(true); // Start loading
     try {
       const { status, data: response } = await apiFetch({
         endpoint: "/register",
         method: "POST",
-        body,
+        body: data,
       });
 
       if (status === 201) {
@@ -128,10 +132,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     } catch (error) {
       console.error("Registration error:", error);
       return "Registration failed due to a server error.";
+    } finally {
+      setIsLoading(false); // End loading
     }
   };
 
   const logout = async (): Promise<void> => {
+    setIsLoading(true); // Start loading
     try {
       const { status, data } = await apiFetch({
         endpoint: "/logout",
@@ -139,18 +146,22 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       });
 
       if (status === 200) {
+        // Clear cookie
+        document.cookie = "sid=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/";
         setUser(null);
       } else {
         console.error("Logout failed:", data.message);
       }
     } catch (error) {
       console.error("Logout error:", error);
+    } finally {
+      setIsLoading(false); // End loading
     }
   };
 
   return (
     <AuthContext.Provider
-      value={{ user, loading, login, registerUser, logout }}
+      value={{ user, isLoading, login, registerUser, logout }}
     >
       {children}
     </AuthContext.Provider>

@@ -26,6 +26,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 
 // Updated Zod schema to match backend registration schema
 const formSchema = z
@@ -81,6 +82,7 @@ export default function SignUp() {
   });
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
+  const router = useRouter();
 
   const handleSignup: SubmitHandler<FormData> = async (data) => {
     setLoading(true);
@@ -99,6 +101,7 @@ export default function SignUp() {
       setError(errorMessage);
     } else {
       // Registration successful, redirect or perform other actions
+      // router.push("/main");
     }
   };
 
