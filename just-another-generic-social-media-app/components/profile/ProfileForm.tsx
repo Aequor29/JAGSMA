@@ -1,4 +1,5 @@
 // components/profile/ProfileForm.tsx
+
 "use client";
 
 import { useState } from "react";
@@ -23,8 +24,14 @@ type ProfileFormProps = {
 export function ProfileForm({ user, updateProfile }: ProfileFormProps) {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [successMessage, setSuccessMessage] = useState<string>("");
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
 
-  const validateForm = (formData: FormData) => {
+  /**
+   * Validates the form data.
+   * @param formData - The FormData object containing form inputs.
+   * @returns boolean indicating whether the form is valid.
+   */
+  const validateForm = (formData: FormData): boolean => {
     const newErrors: Record<string, string> = {};
     const email = formData.get("email") as string;
     const phone = formData.get("phone") as string;
@@ -41,8 +48,8 @@ export function ProfileForm({ user, updateProfile }: ProfileFormProps) {
     if (zipcode && !/^\d{5}$/.test(zipcode)) {
       newErrors.zipcode = "Invalid zipcode. Must be 5 digits";
     }
-    if (password && password.length < 8) {
-      newErrors.password = "Password must be at least 8 characters long";
+    if (password && password.length < 6) {
+      newErrors.password = "Password must be at least 6 characters long";
     }
     if (password && confirmPassword && password !== confirmPassword) {
       newErrors.confirmPassword = "Passwords do not match";
@@ -52,13 +59,35 @@ export function ProfileForm({ user, updateProfile }: ProfileFormProps) {
     return Object.keys(newErrors).length === 0;
   };
 
+  /**
+   * Handles file selection and sets the avatar preview.
+   * @param e - The change event from the file input.
+   */
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setAvatarPreview(URL.createObjectURL(file));
+    } else {
+      setAvatarPreview(null);
+    }
+  };
+
+  /**
+   * Handles form submission.
+   * @param e - The form submission event.
+   */
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setSuccessMessage("");
-    const formData = new FormData(e.currentTarget);
+    const form = e.currentTarget; // Capture form reference
+    const formData = new FormData(form);
     if (validateForm(formData)) {
       await updateProfile(formData);
       setSuccessMessage("Profile updated successfully!");
+      // Clear the file input and preview after successful upload
+      form.reset(); // Use captured form reference
+      setAvatarPreview(null);
+      setErrors({});
     }
   };
 
@@ -74,16 +103,22 @@ export function ProfileForm({ user, updateProfile }: ProfileFormProps) {
           disabled
         />
       </div>
+
+      {/* Email Field */}
       <div className="space-y-2">
         <Label htmlFor="email">Email</Label>
         <Input id="email" name="email" type="email" defaultValue={user.email} />
         {errors.email && <p className="text-red-500 text-sm">{errors.email}</p>}
       </div>
+
+      {/* Phone Field */}
       <div className="space-y-2">
         <Label htmlFor="phone">Phone</Label>
         <Input id="phone" name="phone" defaultValue={user.phone} />
         {errors.phone && <p className="text-red-500 text-sm">{errors.phone}</p>}
       </div>
+
+      {/* Zipcode Field */}
       <div className="space-y-2">
         <Label htmlFor="zipcode">Zipcode</Label>
         <Input id="zipcode" name="zipcode" defaultValue={user.zipcode} />
@@ -91,8 +126,10 @@ export function ProfileForm({ user, updateProfile }: ProfileFormProps) {
           <p className="text-red-500 text-sm">{errors.zipcode}</p>
         )}
       </div>
+
+      {/* Date of Birth Field (Disabled) */}
       <div className="space-y-2">
-        <Label>Date of Birth</Label>
+        <Label htmlFor="dob">Date of Birth</Label>
         <Input
           id="dob"
           name="dob"
@@ -101,6 +138,8 @@ export function ProfileForm({ user, updateProfile }: ProfileFormProps) {
           disabled
         />
       </div>
+
+      {/* New Password Field */}
       <div className="space-y-2">
         <Label htmlFor="password">New Password</Label>
         <Input
@@ -114,6 +153,7 @@ export function ProfileForm({ user, updateProfile }: ProfileFormProps) {
         )}
       </div>
 
+      {/* Confirm Password Field */}
       <div className="space-y-2">
         <Label htmlFor="confirmPassword">Confirm Password</Label>
         <Input
@@ -127,14 +167,35 @@ export function ProfileForm({ user, updateProfile }: ProfileFormProps) {
         )}
       </div>
 
+      {/* Avatar Upload Field */}
       <div className="space-y-4">
         <div className="space-y-2">
           <Label htmlFor="avatar" className="cursor-pointer">
             Upload New Picture
           </Label>
-          <Input type="file" id="avatar" name="avatar" accept="image/*" />
+          <Input
+            type="file"
+            id="avatar"
+            name="avatar"
+            accept="image/*"
+            onChange={handleFileChange}
+          />
+          {/* Preview of Selected Avatar */}
+          {avatarPreview && (
+            <img
+              src={avatarPreview}
+              alt="Avatar Preview"
+              className="mt-2 h-24 w-24 rounded-full object-cover"
+            />
+          )}
         </div>
-        <Button type="submit">Update Profile</Button>
+
+        {/* Submit Button */}
+        <Button type="submit" disabled={false}>
+          Update Profile
+        </Button>
+
+        {/* Success Message */}
         {successMessage && (
           <p className="text-green-500 text-sm">{successMessage}</p>
         )}

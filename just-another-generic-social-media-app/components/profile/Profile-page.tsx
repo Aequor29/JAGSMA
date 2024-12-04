@@ -1,3 +1,5 @@
+// components/profile/ProfilePage.tsx
+
 "use client";
 
 import { useState, useEffect } from "react";
@@ -84,19 +86,49 @@ export default function ProfilePage() {
     fetchUserData();
   }, [user, authLoading]);
 
+  /**
+   * Updates the user's profile, including avatar upload if a file is provided.
+   * @param formData - The FormData object containing profile updates.
+   */
   const updateProfile = async (formData: FormData) => {
     if (!userData) return;
 
     try {
+      setLoading(true);
+      setError(null);
+
+      // Handle avatar upload first, if a file is present
+      const avatarFile = formData.get("avatar") as File | null;
+      let avatarUrl: string | undefined = undefined;
+
+      if (avatarFile && avatarFile.size > 0) {
+        const avatarFormData = new FormData();
+        avatarFormData.append("avatar", avatarFile);
+
+        const uploadResponse = await apiFetch({
+          endpoint: "/avatar",
+          method: "PUT",
+          body: avatarFormData,
+          isFormData: true, // Indicate that this is a FormData request
+        });
+
+        if (uploadResponse.status === 200 && uploadResponse.data.avatar) {
+          avatarUrl = uploadResponse.data.avatar;
+        } else {
+          throw new Error(
+            uploadResponse.data.message || "Failed to upload avatar."
+          );
+        }
+      }
+
+      // Prepare update requests for other profile fields
       const updates: Partial<UserData> = {};
 
       const email = formData.get("email") as string;
       const phone = formData.get("phone") as string;
       const zipcode = formData.get("zipcode") as string;
       const password = formData.get("password") as string;
-      const avatarFile = formData.get("avatar") as File | null;
 
-      // Prepare update requests
       const updatePromises = [];
 
       if (email && email !== userData.email) {
@@ -142,48 +174,32 @@ export default function ProfilePage() {
         );
       }
 
-      if (avatarFile) {
-        // Handle avatar upload (to be implemented in the future)
-        // For now, we'll skip updating the avatar
+      if (avatarUrl) {
+        updates.avatarUrl = avatarUrl;
       }
 
-      const responses = await Promise.all(updatePromises);
+      if (updatePromises.length > 0) {
+        const responses = await Promise.all(updatePromises);
 
-      // Check for any failed updates
-      const failedUpdates = responses.filter((res) => res.status !== 200);
-      if (failedUpdates.length > 0) {
-        throw new Error("One or more profile updates failed");
+        // Check for any failed updates
+        const failedUpdates = responses.filter((res) => res.status !== 200);
+        if (failedUpdates.length > 0) {
+          throw new Error("One or more profile updates failed");
+        }
       }
 
-      // Update the local state
+      // Update the local state with the new data
       setUserData((prev) => ({
         ...prev!,
         ...updates,
       }));
 
-      // Optionally, refetch all data to ensure consistency
-      // You can uncomment the following lines if needed
-      /*
-      const [emailRes, phoneRes, dobRes, zipcodeRes, avatarRes] = await Promise.all([
-        apiFetch({ endpoint: "/email" }),
-        apiFetch({ endpoint: "/phone" }),
-        apiFetch({ endpoint: "/dob" }),
-        apiFetch({ endpoint: "/zipcode" }),
-        apiFetch({ endpoint: "/avatar" }),
-      ]);
-
-      setUserData({
-        username: user.username,
-        email: emailRes.data.email,
-        phone: phoneRes.data.phone,
-        dob: new Date(dobRes.data.dob),
-        zipcode: zipcodeRes.data.zipcode,
-        avatarUrl: avatarRes?.data.avatar || undefined,
-      });
-      */
-    } catch (err) {
-      setError("Failed to update profile");
+      setLoading(false);
+      alert("Profile updated successfully!");
+    } catch (err: any) {
+      setError(err.message || "Failed to update profile");
       console.error(err);
+      setLoading(false);
     }
   };
 

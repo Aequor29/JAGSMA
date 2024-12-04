@@ -15,11 +15,15 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ModeToggle } from "@/components/dark-mode/ModeToggle";
 import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import { apiFetch } from "@/utils/api";
 
 export default function Navbar() {
-  const { user, logout, loading } = useAuth();
+  const { user, logout, isLoading } = useAuth();
   const router = useRouter();
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [avatarLoading, setAvatarLoading] = useState<boolean>(false);
+  const [avatarError, setAvatarError] = useState<string | null>(null);
 
   const handleLogout = async () => {
     await logout();
@@ -27,7 +31,31 @@ export default function Navbar() {
   };
 
   useEffect(() => {
-    // Optionally, handle side effects based on user state
+    const fetchAvatar = async () => {
+      if (user) {
+        setAvatarLoading(true);
+        setAvatarError(null);
+        try {
+          const response = await apiFetch({ endpoint: "/avatar" });
+          if (response.status === 200 && response.data.avatar) {
+            setAvatarUrl(response.data.avatar);
+          } else {
+            // Handle case where avatar is not available
+            setAvatarUrl(null);
+          }
+        } catch (error) {
+          console.error("Failed to fetch avatar:", error);
+          setAvatarError("Failed to load avatar");
+          setAvatarUrl(null);
+        } finally {
+          setAvatarLoading(false);
+        }
+      } else {
+        setAvatarUrl(null);
+      }
+    };
+
+    fetchAvatar();
   }, [user]);
 
   return (
@@ -42,8 +70,13 @@ export default function Navbar() {
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" className="relative h-8 w-8 rounded-full">
                 <Avatar className="h-8 w-8">
-                  {user && user.avatar ? (
-                    <AvatarImage src={user.avatar} alt={user.username} />
+                  {avatarLoading ? (
+                    <AvatarFallback>U</AvatarFallback>
+                  ) : avatarUrl ? (
+                    <AvatarImage
+                      src={avatarUrl}
+                      alt={user?.username || "User"}
+                    />
                   ) : (
                     <AvatarFallback>
                       {user ? user.username.charAt(0).toUpperCase() : "U"}
