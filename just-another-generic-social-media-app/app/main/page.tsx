@@ -6,7 +6,8 @@ import NewPost from "@/components/main/NewPost";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import Feed from "@/components/main/Feed";
 import { useState, useEffect } from "react";
-import { useAuth } from "@/app/context/AuthContext"; // Adjust the path as needed
+import { useAuth } from "@/app/context/AuthContext";
+import { apiFetch } from "@/utils/api";
 
 interface Article {
   id: number;
@@ -18,129 +19,131 @@ interface Article {
 }
 
 interface User {
-  id: number;
   username: string;
   headline: string;
+  avatarUrl?: string;
 }
 
 export default function Main() {
   const { user } = useAuth();
-  const currentUser = user;
-
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [articles, setArticles] = useState<Article[]>([]);
   const [users, setUsers] = useState<User[]>([]);
-  const [followedUserIds, setFollowedUserIds] = useState<number[]>([]);
+  const [followedUsernames, setFollowedUsernames] = useState<string[]>([]);
 
-  // Fetch users and posts
+  // Fetch current user's data
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        // Fetch users from JSONPlaceholder
-        const resUsers = await fetch(
-          "https://jsonplaceholder.typicode.com/users"
-        );
-        const dataUsers: any[] = await resUsers.json();
+    const fetchUserData = async () => {
+      if (user) {
+        try {
+          const [headlineRes, avatarRes] = await Promise.all([
+            apiFetch({ endpoint: `/headline/${user.username}` }),
+            apiFetch({ endpoint: `/avatar/${user.username}` }),
+          ]);
 
-        // Fetch registered users from localStorage
-        const registeredUsers = JSON.parse(
-          localStorage.getItem("users") || "[]"
-        );
-        const formattedRegisteredUsers: User[] = registeredUsers.map(
-          (u: any) => ({
-            id: u.id,
-            username: u.username,
-            headline: u.headline,
-          })
-        );
-
-        const combinedUsers = [...dataUsers, ...formattedRegisteredUsers];
-        setUsers(combinedUsers);
-
-        // Fetch posts from JSONPlaceholder
-        const resPosts = await fetch(
-          "https://jsonplaceholder.typicode.com/posts"
-        );
-        const dataPosts: Omit<Article, "createdAt" | "author">[] =
-          await resPosts.json();
-
-        const randomDate = (): string => {
-          const end = new Date();
-          const start = new Date();
-          start.setMonth(start.getMonth() - 1); // Posts from the past month
-          const randomTime = new Date(
-            start.getTime() + Math.random() * (end.getTime() - start.getTime())
-          );
-          return randomTime.toISOString();
-        };
-
-        const articlesWithMeta: Article[] = dataPosts.map((article) => {
-          const user = combinedUsers.find((u) => u.id === article.userId);
-          return {
-            ...article,
-            createdAt: randomDate(),
-            author: user ? user.username : "Unknown",
-          };
-        });
-
-        setArticles(articlesWithMeta);
-      } catch (error) {
-        console.error("Error fetching data:", error);
+          if (headlineRes.status === 200 && avatarRes.status === 200) {
+            setCurrentUser({
+              username: user.username,
+              headline: headlineRes.data.headline,
+              avatarUrl: avatarRes.data.avatar,
+            });
+          }
+        } catch (error) {
+          console.error("Error fetching user data:", error);
+        }
       }
     };
 
-    fetchData();
-  }, []);
+    fetchUserData();
+  }, [user]);
 
-  // Load followedUserIds per user
+  // Fetch followed users
   useEffect(() => {
-    // if the current user is the placeholder user, set 2 and 3 to be followed by default
-    if (currentUser && currentUser.id === 1) {
-      setFollowedUserIds([2, 3]);
-    }
-    if (currentUser) {
-      const storedFollowed = localStorage.getItem(
-        `followedUserIds_${currentUser.id}`
-      );
-      if (storedFollowed) {
-        setFollowedUserIds(JSON.parse(storedFollowed));
-      } else {
-        setFollowedUserIds([]); // No followed users for new registrations
+    const fetchFollowing = async () => {
+      if (user) {
+        try {
+          const response = await apiFetch({ endpoint: "/following" });
+          if (response.status === 200) {
+            setFollowedUsernames(response.data.following);
+          }
+        } catch (error) {
+          console.error("Error fetching following list:", error);
+        }
       }
-    }
-  }, [currentUser]);
+    };
 
-  // Persist followedUserIds to localStorage
-  useEffect(() => {
-    if (currentUser) {
-      localStorage.setItem(
-        `followedUserIds_${currentUser.id}`,
-        JSON.stringify(followedUserIds)
-      );
-    }
-  }, [followedUserIds, currentUser]);
+    fetchFollowing();
+  }, [user]);
 
-  // Function to add new post to feed
-  const addNewPost = (newPost: Article) => {
-    setArticles([newPost, ...articles]); // Add the new post to the articles
-  };
+  // Handle follow/unfollow
+  const handleFollow = async (usernameToFollow: string) => {
+    try {
+      const response = await apiFetch({
+        endpoint: `/following/${usernameToFollow}`,
+        method: "PUT",
+      });
 
-  // Function to handle following/unfollowing users
-  const handleFollow = (userId: number) => {
-    if (
-      currentUser &&
-      !followedUserIds.includes(userId) &&
-      userId !== currentUser.id
-    ) {
-      setFollowedUserIds((prev) => [...prev, userId]);
+      if (response.status === 200) {
+        setFollowedUsernames(response.data.following);
+      }
+    } catch (error) {
+      console.error("Error following user:", error);
     }
   };
 
-  const handleUnfollow = (userId: number) => {
-    setFollowedUserIds((prev) => prev.filter((id) => id !== userId));
+  const handleUnfollow = async (usernameToUnfollow: string) => {
+    try {
+      const response = await apiFetch({
+        endpoint: `/following/${usernameToUnfollow}`,
+        method: "DELETE",
+      });
+
+      if (response.status === 200) {
+        setFollowedUsernames(response.data.following);
+      }
+    } catch (error) {
+      console.error("Error unfollowing user:", error);
+    }
+  };
+
+  // Update headline
+  const updateHeadline = async (newHeadline: string) => {
+    try {
+      const response = await apiFetch({
+        endpoint: "/headline",
+        method: "PUT",
+        body: { headline: newHeadline },
+      });
+
+      if (response.status === 200 && currentUser) {
+        setCurrentUser({
+          ...currentUser,
+          headline: response.data.headline,
+        });
+      }
+    } catch (error) {
+      console.error("Error updating headline:", error);
+    }
+  };
+
+  // Add new post handler
+  const addNewPost = async (newPost: Article) => {
+    try {
+      const response = await apiFetch({
+        endpoint: "/article",
+        method: "POST",
+        body: { title: newPost.title, body: newPost.body },
+      });
+
+      if (response.status === 200) {
+        setArticles([response.data.article, ...articles]);
+      }
+    } catch (error) {
+      console.error("Error adding new post:", error);
+    }
   };
 
   if (!currentUser) {
-    // Show a loading state or redirect to login
     return <p>Loading...</p>;
   }
 
@@ -149,21 +152,20 @@ export default function Main() {
       <SidebarProvider>
         <FriendsBar
           currentUser={currentUser}
-          users={users}
-          followedUserIds={followedUserIds}
+          followedUsernames={followedUsernames}
           onFollow={handleFollow}
           onUnfollow={handleUnfollow}
+          onUpdateHeadline={updateHeadline}
         />
         <SidebarTrigger />
         <div className="flex-1 p-4">
           <div className="my-3">
             <NewPost addNewPost={addNewPost} currentUser={currentUser} />
           </div>
-
           <div>
             <Feed
               articles={articles}
-              followedUserIds={followedUserIds}
+              followedUsernames={followedUsernames}
               currentUser={currentUser}
             />
           </div>

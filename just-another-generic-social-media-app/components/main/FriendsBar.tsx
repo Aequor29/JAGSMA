@@ -1,4 +1,6 @@
+// components/main/FriendsBar.tsx
 "use client";
+
 import {
   Sidebar,
   SidebarContent,
@@ -6,107 +8,185 @@ import {
   SidebarGroupLabel,
   SidebarGroup,
 } from "@/components/ui/sidebar";
-import { Avatar } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import FollowedUsers from "@/components/main/FollowedUsers";
-import { useRef } from "react";
-import { useAuth } from "@/app/context/AuthContext";
+import { useRef, useState, useEffect } from "react";
+import { apiFetch } from "@/utils/api";
 
 interface User {
-  id: number;
   username: string;
   headline: string;
+  avatarUrl?: string;
 }
 
 interface FriendsBarProps {
   currentUser: User;
-  users: User[];
-  followedUserIds: number[];
-  onFollow: (userId: number) => void;
-  onUnfollow: (userId: number) => void;
+  followedUsernames: string[];
+  onUpdateHeadline: (newHeadline: string) => void;
+  onFollow: (usernameToFollow: string) => void;
+  onUnfollow: (usernameToUnfollow: string) => void;
 }
 
 export default function FriendsBar({
   currentUser,
-  users,
-  followedUserIds,
+  followedUsernames,
+  onUpdateHeadline,
   onFollow,
   onUnfollow,
 }: FriendsBarProps) {
-  const { updateHeadline } = useAuth();
   const headlineInputRef = useRef<HTMLInputElement | null>(null);
   const followInputRef = useRef<HTMLInputElement | null>(null);
+  const [isUpdatingHeadline, setIsUpdatingHeadline] = useState<boolean>(false);
+  const [followedUsers, setFollowedUsers] = useState<User[]>([]);
 
-  const handleUpdateHeadline = () => {
+  // Fetch followed users' details
+  useEffect(() => {
+    const fetchFollowedUsersDetails = async () => {
+      try {
+        const usersDetails = await Promise.all(
+          followedUsernames.map(async (username) => {
+            const [headlineRes, avatarRes] = await Promise.all([
+              apiFetch({ endpoint: `/headline/${username}` }),
+              apiFetch({ endpoint: `/avatar/${username}` }),
+            ]);
+
+            return {
+              username,
+              headline: headlineRes.data?.headline || "No headline",
+              avatarUrl: avatarRes.data?.avatar || "",
+            };
+          })
+        );
+        setFollowedUsers(usersDetails);
+      } catch (error) {
+        console.error("Error fetching followed users details:", error);
+      }
+    };
+
+    if (followedUsernames.length > 0) {
+      fetchFollowedUsersDetails();
+    } else {
+      setFollowedUsers([]);
+    }
+  }, [followedUsernames]);
+
+  const handleUpdateHeadline = async () => {
     if (headlineInputRef.current?.value) {
-      const newHeadline = headlineInputRef.current.value;
-      updateHeadline(newHeadline);
-      headlineInputRef.current.value = "";
+      const newHeadline = headlineInputRef.current.value.trim();
+      if (!newHeadline) {
+        alert("Headline cannot be empty.");
+        return;
+      }
+
+      setIsUpdatingHeadline(true);
+      try {
+        const res = await apiFetch({
+          endpoint: "/headline",
+          method: "PUT",
+          body: { headline: newHeadline },
+        });
+
+        if (res.status === 200 && res.data.headline) {
+          onUpdateHeadline(res.data.headline);
+          headlineInputRef.current.value = "";
+        } else {
+          alert(res.data.message || "Failed to update headline.");
+        }
+      } catch (error) {
+        console.error("Error updating headline:", error);
+        alert("An error occurred while updating the headline.");
+      } finally {
+        setIsUpdatingHeadline(false);
+      }
     }
   };
 
-  const handleFollowClick = () => {
-    const usernameToFollow = followInputRef.current?.value;
-    if (usernameToFollow) {
-      const userToFollow = users.find(
-        (user) => user.username === usernameToFollow
-      );
-      if (
-        userToFollow &&
-        userToFollow.id !== currentUser.id &&
-        !followedUserIds.includes(userToFollow.id)
-      ) {
-        onFollow(userToFollow.id);
+  const handleFollowClick = async () => {
+    const usernameToFollow = followInputRef.current?.value.trim();
+    if (!usernameToFollow) return;
+
+    try {
+      // Verify user exists first
+      const headlineRes = await apiFetch({
+        endpoint: `/user/${usernameToFollow}`,
+      });
+
+      if (headlineRes.status === 404) {
+        alert("User not found.");
+        return;
       }
+
+      if (usernameToFollow === currentUser.username) {
+        alert("You cannot follow yourself.");
+        return;
+      }
+
+      if (followedUsernames.includes(usernameToFollow)) {
+        alert("You are already following this user.");
+        return;
+      }
+
+      onFollow(usernameToFollow);
       if (followInputRef.current) {
         followInputRef.current.value = "";
       }
+    } catch (error) {
+      console.error("Error following user:", error);
+      alert("Failed to follow user. Please try again.");
     }
-  };
-
-  const handleUnfollow = (userId: number) => {
-    onUnfollow(userId);
   };
 
   return (
     <Sidebar>
       <SidebarHeader>
-        <div className="m-3">
-          <Avatar>
-            <img src="https://placehold.co/100x100" alt="User avatar" />
+        <div className="m-3 flex flex-col items-start">
+          <Avatar className="mb-2">
+            {currentUser.avatarUrl ? (
+              <AvatarImage
+                src={currentUser.avatarUrl}
+                alt={`${currentUser.username}'s avatar`}
+              />
+            ) : (
+              <AvatarFallback>
+                {currentUser.username.charAt(0).toUpperCase()}
+              </AvatarFallback>
+            )}
           </Avatar>
           <div>
             <h3 className="text-lg font-semibold">{currentUser.username}</h3>
-            <p>{currentUser.headline}</p> {/* Displaying user's headline */}
+            <p>{currentUser.headline}</p>
           </div>
           <Input
             placeholder="Update your headline"
             ref={headlineInputRef}
             className="mt-2"
+            aria-label="Update your headline"
+            disabled={isUpdatingHeadline}
           />
-          <Button className="mt-3" onClick={handleUpdateHeadline}>
-            Update Headline
+          <Button
+            className="mt-3"
+            onClick={handleUpdateHeadline}
+            disabled={isUpdatingHeadline}
+          >
+            {isUpdatingHeadline ? "Updating..." : "Update Headline"}
           </Button>
         </div>
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
           <SidebarGroupLabel>Following</SidebarGroupLabel>
-          {followedUserIds.length > 0 ? (
-            followedUserIds.map((userId) => {
-              const user = users.find((u) => u.id === userId);
-              if (!user) return null;
-              return (
-                <FollowedUsers
-                  key={user.id}
-                  userName={user.username}
-                  userHeadLine={user.headline} // Use user's headline
-                  imageURL="https://placehold.co/100x100"
-                  onUnfollow={() => handleUnfollow(user.id)}
-                />
-              );
-            })
+          {followedUsers.length > 0 ? (
+            followedUsers.map((user) => (
+              <FollowedUsers
+                key={user.username}
+                userName={user.username}
+                userHeadLine={user.headline}
+                imageURL={user.avatarUrl || ""}
+                onUnfollow={() => onUnfollow(user.username)}
+              />
+            ))
           ) : (
             <p className="text-sm text-gray-500">
               You are not following anyone yet.
@@ -121,6 +201,7 @@ export default function FriendsBar({
             ref={followInputRef}
             onKeyPress={(e) => {
               if (e.key === "Enter") {
+                e.preventDefault();
                 handleFollowClick();
               }
             }}
