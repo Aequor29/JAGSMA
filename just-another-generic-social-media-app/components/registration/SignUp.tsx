@@ -101,7 +101,7 @@ export default function SignUp() {
       setError(errorMessage);
     } else {
       // Registration successful, redirect or perform other actions
-      // router.push("/main");
+      router.push("/main");
     }
   };
 

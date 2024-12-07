@@ -1,3 +1,4 @@
+// app/context/AuthContext.tsx
 "use client";
 
 import React, {
@@ -8,7 +9,12 @@ import React, {
   ReactNode,
 } from "react";
 import { apiFetch } from "@/utils/api";
-import { cookies } from "next/headers";
+
+interface AuthEntry {
+  provider: string;
+  id: string;
+  email: string;
+}
 
 interface User {
   username: string;
@@ -17,14 +23,16 @@ interface User {
   phone?: string;
   zipcode?: string;
   avatar?: string;
+  auth?: AuthEntry[]; // Added auth array to keep track of linked providers
 }
 
 interface AuthContextProps {
   user: User | null;
-  isLoading: boolean; // Renamed from 'loading' to 'isLoading'
+  isLoading: boolean;
   login: (username: string, password: string) => Promise<boolean>;
   registerUser: (data: RegisterData) => Promise<string | null>;
   logout: () => Promise<void>;
+  refreshUser: () => Promise<void>; // New helper to refresh user data after linking/unlinking
 }
 
 interface RegisterData {
@@ -38,15 +46,16 @@ interface RegisterData {
 
 const AuthContext = createContext<AuthContextProps>({
   user: null,
-  isLoading: true, // Updated default value
+  isLoading: true,
   login: async () => false,
   registerUser: async () => null,
   logout: async () => {},
+  refreshUser: async () => {},
 });
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(true); // Renamed state
+  const [isLoading, setIsLoading] = useState<boolean>(true);
 
   const fetchUser = async () => {
     try {
@@ -63,20 +72,24 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       console.error("Error fetching user:", error);
       setUser(null);
     } finally {
-      setIsLoading(false); // Updated state
+      setIsLoading(false);
     }
   };
 
   useEffect(() => {
     fetchUser();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const refreshUser = async () => {
+    setIsLoading(true);
+    await fetchUser();
+  };
 
   const login = async (
     username: string,
     password: string
   ): Promise<boolean> => {
-    setIsLoading(true); // Start loading
+    setIsLoading(true);
     try {
       const { status, data } = await apiFetch({
         endpoint: "/login",
@@ -86,7 +99,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       if (status === 200) {
         const currUser: User = { username: data.username };
-        console.log(currUser);
         setUser(currUser);
         return true;
       } else {
@@ -97,12 +109,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       console.error("Login error:", error);
       return false;
     } finally {
-      setIsLoading(false); // End loading
+      setIsLoading(false);
     }
   };
 
   const registerUser = async (data: RegisterData): Promise<string | null> => {
-    setIsLoading(true); // Start loading
+    setIsLoading(true);
     try {
       const { status, data: response } = await apiFetch({
         endpoint: "/register",
@@ -111,7 +123,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       });
 
       if (status === 201) {
-        // Automatically log in the user after successful registration
         const loginSuccess = await login(data.username, data.password);
         if (loginSuccess) {
           return null;
@@ -119,9 +130,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           return "Registration successful, but automatic login failed.";
         }
       } else {
-        // Handle validation errors or other errors from the backend
         if (response.errors) {
-          // Aggregate error messages
           const messages = response.errors
             .map((err: any) => err.msg)
             .join(", ");
@@ -130,15 +139,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         return response.message || "Registration failed.";
       }
     } catch (error) {
-      console.error("Registration error:", error);
-      return "Registration failed due to a server error.";
+      return String(error);
     } finally {
-      setIsLoading(false); // End loading
+      setIsLoading(false);
     }
   };
 
   const logout = async (): Promise<void> => {
-    setIsLoading(true); // Start loading
+    setIsLoading(true);
     try {
       const { status, data } = await apiFetch({
         endpoint: "/logout",
@@ -146,7 +154,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       });
 
       if (status === 200) {
-        // Clear cookie
         document.cookie = "sid=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/";
         setUser(null);
       } else {
@@ -155,18 +162,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     } catch (error) {
       console.error("Logout error:", error);
     } finally {
-      setIsLoading(false); // End loading
+      setIsLoading(false);
     }
   };
 
   return (
     <AuthContext.Provider
-      value={{ user, isLoading, login, registerUser, logout }}
+      value={{ user, isLoading, login, registerUser, logout, refreshUser }}
     >
       {children}
     </AuthContext.Provider>
   );
 };
 
-// Custom hook for accessing the AuthContext
 export const useAuth = () => useContext(AuthContext);

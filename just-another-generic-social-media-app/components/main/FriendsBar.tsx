@@ -40,6 +40,7 @@ export default function FriendsBar({
   const followInputRef = useRef<HTMLInputElement | null>(null);
   const [isUpdatingHeadline, setIsUpdatingHeadline] = useState<boolean>(false);
   const [followedUsers, setFollowedUsers] = useState<User[]>([]);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Fetch followed users' details
   useEffect(() => {
@@ -73,10 +74,11 @@ export default function FriendsBar({
   }, [followedUsernames]);
 
   const handleUpdateHeadline = async () => {
+    setErrorMessage(null); // Clear previous error
     if (headlineInputRef.current?.value) {
       const newHeadline = headlineInputRef.current.value.trim();
       if (!newHeadline) {
-        alert("Headline cannot be empty.");
+        setErrorMessage("Headline cannot be empty.");
         return;
       }
 
@@ -92,11 +94,11 @@ export default function FriendsBar({
           onUpdateHeadline(res.data.headline);
           headlineInputRef.current.value = "";
         } else {
-          alert(res.data.message || "Failed to update headline.");
+          setErrorMessage(res.data.message || "Failed to update headline.");
         }
       } catch (error) {
         console.error("Error updating headline:", error);
-        alert("An error occurred while updating the headline.");
+        setErrorMessage("An error occurred while updating the headline.");
       } finally {
         setIsUpdatingHeadline(false);
       }
@@ -104,27 +106,27 @@ export default function FriendsBar({
   };
 
   const handleFollowClick = async () => {
+    setErrorMessage(null); // Clear previous error
     const usernameToFollow = followInputRef.current?.value.trim();
     if (!usernameToFollow) return;
 
     try {
-      // Verify user exists by checking their headline
       const headlineRes = await apiFetch({
         endpoint: `/headline/${usernameToFollow}`,
       });
 
       if (headlineRes.status === 404) {
-        alert("User not found.");
+        setErrorMessage("User not found.");
         return;
       }
 
       if (usernameToFollow === currentUser.username) {
-        alert("You cannot follow yourself.");
+        setErrorMessage("You cannot follow yourself.");
         return;
       }
 
       if (followedUsernames.includes(usernameToFollow)) {
-        alert("You are already following this user.");
+        setErrorMessage("You are already following this user.");
         return;
       }
 
@@ -134,7 +136,7 @@ export default function FriendsBar({
       }
     } catch (error) {
       console.error("Error following user:", error);
-      alert("Failed to follow user. Please try again.");
+      setErrorMessage("Failed to follow user. Please try again.");
     }
   };
 
@@ -172,6 +174,9 @@ export default function FriendsBar({
           >
             {isUpdatingHeadline ? "Updating..." : "Update Headline"}
           </Button>
+          {errorMessage && (
+            <p className="text-red-500 text-sm mt-2">{errorMessage}</p>
+          )}
         </div>
       </SidebarHeader>
       <SidebarContent>
@@ -210,6 +215,12 @@ export default function FriendsBar({
           <Button className="mb-3" onClick={handleFollowClick}>
             Follow
           </Button>
+          {/* If you want a separate error message for the follow section,
+              you can either use the same errorMessage state or create another state variable. 
+              For simplicity, we reuse the same errorMessage here. */}
+          {errorMessage && (
+            <p className="text-red-500 text-sm mt-2">{errorMessage}</p>
+          )}
         </SidebarGroup>
       </SidebarContent>
     </Sidebar>

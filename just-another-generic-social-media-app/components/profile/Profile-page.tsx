@@ -8,6 +8,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ProfileForm } from "./ProfileForm";
 import { useAuth } from "@/app/context/AuthContext";
 import { apiFetch } from "@/utils/api";
+import { Button } from "@/components/ui/button";
 
 type UserData = {
   username: string;
@@ -22,13 +23,13 @@ export default function ProfilePage() {
   const [userData, setUserData] = useState<UserData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
-  const { user, isLoading: authLoading } = useAuth(); // Assuming useAuth provides isLoading
-  console.log("we have user", user);
+  const { user, isLoading: authLoading, refreshUser } = useAuth();
+
+  const googleLinked = user?.auth?.some((entry) => entry.provider === "google");
 
   useEffect(() => {
     const fetchUserData = async () => {
       if (authLoading) {
-        // Authentication status is still loading
         setLoading(true);
         return;
       }
@@ -39,12 +40,10 @@ export default function ProfilePage() {
         return;
       }
 
-      // Clear any previous errors when user is present
       setError(null);
       setLoading(true);
 
       try {
-        // Fetch individual profile fields using the correct backend routes
         const [emailRes, phoneRes, dobRes, zipcodeRes, avatarRes] =
           await Promise.all([
             apiFetch({ endpoint: "/email" }),
@@ -54,7 +53,6 @@ export default function ProfilePage() {
             apiFetch({ endpoint: "/avatar" }),
           ]);
 
-        // Check for any failed fetches
         if (
           emailRes.status !== 200 ||
           phoneRes.status !== 200 ||
@@ -71,7 +69,7 @@ export default function ProfilePage() {
           phone: phoneRes.data.phone,
           dob: new Date(dobRes.data.dob),
           zipcode: zipcodeRes.data.zipcode,
-          avatarUrl: avatarRes.data.avatar || undefined, // Optional
+          avatarUrl: avatarRes.data.avatar || undefined,
         };
 
         setUserData(fetchedUserData);
@@ -86,10 +84,6 @@ export default function ProfilePage() {
     fetchUserData();
   }, [user, authLoading]);
 
-  /**
-   * Updates the user's profile, including avatar upload if a file is provided.
-   * @param formData - The FormData object containing profile updates.
-   */
   const updateProfile = async (formData: FormData) => {
     if (!userData) return;
 
@@ -97,7 +91,6 @@ export default function ProfilePage() {
       setLoading(true);
       setError(null);
 
-      // Handle avatar upload first, if a file is present
       const avatarFile = formData.get("avatar") as File | null;
       let avatarUrl: string | undefined = undefined;
 
@@ -109,7 +102,7 @@ export default function ProfilePage() {
           endpoint: "/avatar",
           method: "PUT",
           body: avatarFormData,
-          isFormData: true, // Indicate that this is a FormData request
+          isFormData: true,
         });
 
         if (uploadResponse.status === 200 && uploadResponse.data.avatar) {
@@ -121,7 +114,6 @@ export default function ProfilePage() {
         }
       }
 
-      // Prepare update requests for other profile fields
       const updates: Partial<UserData> = {};
 
       const email = formData.get("email") as string;
@@ -180,25 +172,44 @@ export default function ProfilePage() {
 
       if (updatePromises.length > 0) {
         const responses = await Promise.all(updatePromises);
-
-        // Check for any failed updates
         const failedUpdates = responses.filter((res) => res.status !== 200);
         if (failedUpdates.length > 0) {
           throw new Error("One or more profile updates failed");
         }
       }
 
-      // Update the local state with the new data
       setUserData((prev) => ({
         ...prev!,
         ...updates,
       }));
 
       setLoading(false);
-      alert("Profile updated successfully!");
     } catch (err: any) {
       setError(err.message || "Failed to update profile");
       console.error(err);
+      setLoading(false);
+    }
+  };
+
+  const handleLinkGoogle = () => {
+    // Redirect user to Google linking route
+    window.location.href = `${process.env.NEXT_PUBLIC_BACKEND_URL}/auth/google/link`;
+  };
+
+  const handleUnlinkGoogle = async () => {
+    try {
+      setLoading(true);
+      await apiFetch({
+        endpoint: "/unlink-google",
+        method: "POST",
+      });
+      // Refresh user data after unlinking
+      await refreshUser();
+      alert("Google account unlinked successfully!");
+    } catch (err: any) {
+      setError(err.message || "Failed to unlink Google account");
+      console.error(err);
+    } finally {
       setLoading(false);
     }
   };
@@ -238,6 +249,18 @@ export default function ProfilePage() {
               <p className="text-gray-500">{userData.phone}</p>
               <p className="text-gray-500">{userData.zipcode}</p>
             </div>
+          </div>
+          {/* Add Link/Unlink Buttons */}
+          <div className="space-y-4">
+            {!googleLinked ? (
+              <Button onClick={handleLinkGoogle} variant="outline">
+                Link Google Account
+              </Button>
+            ) : (
+              <Button onClick={handleUnlinkGoogle} variant="destructive">
+                Unlink Google Account
+              </Button>
+            )}
           </div>
           <ProfileForm user={userData} updateProfile={updateProfile} />
         </div>
