@@ -1,6 +1,7 @@
-// components/main/Post.tsx
+// /components/main/Post.tsx
+
 "use client";
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import {
   Card,
   CardHeader,
@@ -10,76 +11,162 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "../ui/textarea";
-
-interface Article {
-  id: number;
-  userId: number;
-  title: string;
-  body: string;
-  createdAt: string;
-  author: string;
-}
+import { apiFetch } from "@/utils/api";
+import { toast } from "react-toastify"; // Ensure react-toastify is installed
 
 interface Comment {
-  id: number;
-  name: string;
-  email: string;
-  body: string;
+  _id: string;
+  author: string;
+  text: string;
+  date: string;
+}
+
+interface Article {
+  id: string;
+  title: string;
+  text: string;
+  author: string;
+  date: string;
+  image?: string;
+  comments?: Comment[];
 }
 
 interface PostProps {
   article: Article;
+  currentUser: { username: string };
 }
 
-const Post = ({ article }: PostProps) => {
-  const [comments, setComments] = useState<Comment[]>([]);
+const Post = ({ article: initialArticle, currentUser }: PostProps) => {
+  const [article, setArticle] = useState<Article>(initialArticle);
+  const [comments, setComments] = useState<Comment[]>(article.comments || []);
   const [showComments, setShowComments] = useState<boolean>(false);
+
   const [newComment, setNewComment] = useState<string>("");
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
 
-  // Fetch comments when showComments is true
-  useEffect(() => {
-    if (showComments && comments.length === 0) {
-      setIsLoading(true);
-      fetch(
-        `https://jsonplaceholder.typicode.com/comments?postId=${article.id}`
-      )
-        .then((res) => {
-          if (!res.ok) {
-            throw new Error("Failed to fetch comments.");
-          }
-          return res.json();
-        })
-        .then((data: Comment[]) => {
-          setComments(data);
-          setIsLoading(false);
-        })
-        .catch((err: Error) => {
-          console.error("Error fetching comments:", err);
-          setError("Unable to load comments.");
-          setIsLoading(false);
-        });
-    }
-  }, [showComments, article.id, comments.length]);
+  // Editing states for the article
+  const [isEditingArticle, setIsEditingArticle] = useState<boolean>(false);
+  const [editedArticleText, setEditedArticleText] = useState<string>(
+    article.text
+  );
 
-  // Handle adding a new comment (non-persistent)
-  const handleAddComment = () => {
-    if (newComment.trim() === "") return;
+  // Editing states for comments
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
+  const [editedCommentText, setEditedCommentText] = useState<string>("");
 
-    const comment: Comment = {
-      id: Math.floor(Math.random() * 100000),
-      name: "Current User",
-      email: "currentuser@example.com",
-      body: newComment,
-    };
+  const formattedDate = new Date(article.date).toLocaleString();
 
-    setComments([comment, ...comments]);
-    setNewComment("");
+  // Handle toggling comment visibility
+  const handleToggleComments = () => {
+    setShowComments(!showComments);
   };
 
-  // Format the timestamp for better readability
-  const formattedDate = new Date(article.createdAt).toLocaleString();
+  // Handle add new comment
+  const handleAddComment = async () => {
+    if (newComment.trim() === "") return;
+
+    console.log("Adding comment to article ID:", article.id); // Debugging line
+
+    try {
+      const response = await apiFetch({
+        endpoint: `/articles/${article.id}`,
+        method: "PUT",
+        body: { comment: newComment.trim() },
+      });
+
+      const updatedArticle = response.data.articles[0];
+      setArticle(updatedArticle);
+      setComments(updatedArticle.comments);
+      setNewComment("");
+      toast.success("Comment added successfully!");
+    } catch (error: any) {
+      console.error("Error adding comment:", error);
+      toast.error(error.message || "Failed to add comment. Please try again.");
+    }
+  };
+
+  // Handle edit article
+  const handleEditArticle = () => {
+    if (article.author === currentUser.username) {
+      setIsEditingArticle(true);
+      setEditedArticleText(article.text);
+    }
+  };
+
+  // Handle save edited article
+  const handleSaveArticle = async () => {
+    console.log("Saving article with ID:", article.id); // Debugging line
+    try {
+      const response = await apiFetch({
+        endpoint: `/articles/${article.id}`,
+        method: "PUT",
+        body: { text: editedArticleText },
+      });
+
+      const updatedArticle = response.data.articles[0];
+      setArticle(updatedArticle);
+      setIsEditingArticle(false);
+      toast.success("Article updated successfully!");
+    } catch (error: any) {
+      console.error("Error updating article:", error);
+      toast.error(
+        error.message || "Failed to update article. Please try again."
+      );
+    }
+  };
+
+  // Handle cancel edit article
+  const handleCancelArticleEdit = () => {
+    setIsEditingArticle(false);
+    setEditedArticleText(article.text);
+  };
+
+  // Handle edit comment
+  const handleEditComment = (commentId: string, currentText: string) => {
+    // Ensure current user is either author of the post or author of the comment
+    const comment = comments.find((c) => c._id === commentId);
+    if (
+      comment &&
+      (comment.author === currentUser.username ||
+        article.author === currentUser.username)
+    ) {
+      setEditingCommentId(commentId);
+      setEditedCommentText(currentText);
+    }
+  };
+
+  // Handle save edited comment
+  const handleSaveComment = async () => {
+    if (!editingCommentId) return;
+    console.log("Saving comment with ID:", editingCommentId); // Debugging line
+    try {
+      const response = await apiFetch({
+        endpoint: `/articles/${article.id}`,
+        method: "PUT",
+        body: { commentId: editingCommentId, comment: editedCommentText },
+      });
+
+      const updatedArticle = response.data.articles[0];
+      setArticle(updatedArticle);
+      setComments(updatedArticle.comments);
+      setEditingCommentId(null);
+      setEditedCommentText("");
+      toast.success("Comment updated successfully!");
+    } catch (error: any) {
+      console.error("Error updating comment:", error);
+      toast.error(
+        error.message || "Failed to update comment. Please try again."
+      );
+    }
+  };
+
+  // Handle cancel edit comment
+  const handleCancelCommentEdit = () => {
+    setEditingCommentId(null);
+    setEditedCommentText("");
+  };
+
+  // Check if current user can edit the article
+  const canEditArticle = article.author === currentUser.username;
 
   return (
     <Card className="w-full md:w-auto p-3">
@@ -91,15 +178,40 @@ const Post = ({ article }: PostProps) => {
           </p>
         </div>
       </CardHeader>
-      <CardContent>{article.body}</CardContent>
+      <CardContent>
+        {article.image && (
+          <img
+            src={article.image}
+            alt={article.title}
+            className="max-w-full mb-2"
+          />
+        )}
+        {isEditingArticle ? (
+          <div className="flex flex-col space-y-2">
+            <Textarea
+              value={editedArticleText}
+              onChange={(e) => setEditedArticleText(e.target.value)}
+            />
+            <div className="space-x-2">
+              <Button onClick={handleSaveArticle}>Save</Button>
+              <Button variant="outline" onClick={handleCancelArticleEdit}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <p>{article.text}</p>
+        )}
+      </CardContent>
       <CardFooter className="flex justify-between items-center">
-        <Button
-          variant="outline"
-          onClick={() => setShowComments(!showComments)}
-        >
+        <Button variant="outline" onClick={handleToggleComments}>
           {showComments ? "Hide Comments" : "Show Comments"}
         </Button>
-        <Button variant="outline">Edit</Button>
+        {canEditArticle && !isEditingArticle && (
+          <Button variant="outline" onClick={handleEditArticle}>
+            Edit
+          </Button>
+        )}
       </CardFooter>
       {showComments && (
         <div className="mt-4">
@@ -115,20 +227,54 @@ const Post = ({ article }: PostProps) => {
               Add Comment
             </Button>
           </div>
-          {isLoading ? (
-            <p>Loading comments...</p>
-          ) : error ? (
-            <p className="text-red-500">{error}</p>
-          ) : comments.length > 0 ? (
+
+          {comments.length > 0 ? (
             <ul className="space-y-2">
-              {comments.map((comment) => (
-                <li key={comment.id} className="border p-2 rounded">
-                  <p className="font-semibold">{comment.name}</p>
-                  <p className="text-sm text-muted-foreground">
-                    {comment.body}
-                  </p>
-                </li>
-              ))}
+              {comments.map((comment) => {
+                const canEditComment =
+                  comment.author === currentUser.username ||
+                  article.author === currentUser.username;
+                const isEditingThisComment = editingCommentId === comment._id;
+
+                return (
+                  <li key={comment._id} className="border p-2 rounded">
+                    <p className="font-semibold">{comment.author}</p>
+                    {isEditingThisComment ? (
+                      <div className="flex flex-col space-y-2 mt-2">
+                        <Textarea
+                          value={editedCommentText}
+                          onChange={(e) => setEditedCommentText(e.target.value)}
+                        />
+                        <div className="space-x-2">
+                          <Button onClick={handleSaveComment}>Save</Button>
+                          <Button
+                            variant="outline"
+                            onClick={handleCancelCommentEdit}
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground mt-1">
+                        {comment.text}
+                      </p>
+                    )}
+                    {canEditComment && !isEditingThisComment && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="mt-2"
+                        onClick={() =>
+                          handleEditComment(comment._id, comment.text)
+                        }
+                      >
+                        Edit Comment
+                      </Button>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           ) : (
             <p>No comments yet.</p>

@@ -1,4 +1,5 @@
-// components/main/SearchBar.tsx
+// /components/main/SearchBar.tsx
+
 import { Input } from "@/components/ui/input";
 import { Search } from "lucide-react";
 

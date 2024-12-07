@@ -1,6 +1,7 @@
-// components/main/Feed.tsx
+// /components/main/Feed.tsx
+
 "use client";
-import { useState, useMemo } from "react";
+import { useState, useEffect } from "react";
 import Post from "./Post";
 import SearchBar from "./SearchBar";
 import {
@@ -12,145 +13,181 @@ import {
   PaginationPrevious,
 } from "../ui/pagination";
 import { useDebounce } from "@/hooks/useDebounce";
+import { apiFetch } from "@/utils/api";
+import { toast } from "react-toastify"; // Ensure react-toastify is installed
+
+interface Comment {
+  _id: string;
+  author: string;
+  text: string;
+  date: string;
+}
 
 interface Article {
-  userId: number;
-  id: number;
+  id: string;
+  text: string;
   title: string;
-  body: string;
-  createdAt: string;
   author: string;
+  date: string;
+  image?: string;
+  comments?: Comment[];
 }
 
 interface FeedProps {
-  articles: Article[];
-  followedUserIds: number[];
-  currentUser: { id: number; username: string };
+  followedUsernames: string[];
+  currentUser: { username: string };
+  refresh: boolean; // Trigger refetch when this changes
 }
 
 const ITEMS_PER_PAGE = 10;
 
-const paginate = (
-  array: Article[],
-  pageNumber: number,
-  itemsPerPage: number
-) => {
-  const startIndex = (pageNumber - 1) * itemsPerPage;
-  return array.slice(startIndex, startIndex + itemsPerPage);
-};
-
 export default function Feed({
-  articles,
-  followedUserIds,
+  followedUsernames,
   currentUser,
+  refresh,
 }: FeedProps) {
-  const [currentPage, setCurrentPage] = useState<number>(1);
-  const [searchTerm, setSearchTerm] = useState<string>("");
-  const debouncedSearchTerm = useDebounce(searchTerm, 300); // 300ms debounce
+  const [articles, setArticles] = useState<Article[]>([]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [isLoading, setIsLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState("");
+  const debouncedSearchTerm = useDebounce(searchTerm, 300);
 
-  // Memoize sorted articles
-  const sortedArticles = useMemo(() => {
-    return [...articles].sort(
-      (a, b) =>
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    );
-  }, [articles]);
+  useEffect(() => {
+    const fetchArticles = async () => {
+      setIsLoading(true);
+      try {
+        const queryParams = new URLSearchParams({
+          page: currentPage.toString(),
+          limit: ITEMS_PER_PAGE.toString(),
+          search: debouncedSearchTerm,
+          following: followedUsernames.join(","),
+        });
 
-  // Memoize filtered articles based on search term
-  const filteredArticles = useMemo(() => {
-    return sortedArticles.filter(
-      (article) =>
-        article.title
-          .toLowerCase()
-          .includes(debouncedSearchTerm.toLowerCase()) ||
-        article.body
-          .toLowerCase()
-          .includes(debouncedSearchTerm.toLowerCase()) ||
-        article.author.toLowerCase().includes(debouncedSearchTerm.toLowerCase())
-    );
-  }, [sortedArticles, debouncedSearchTerm]);
+        const response = await apiFetch({
+          endpoint: `/articles?${queryParams}`,
+        });
+        if (response.status === 200) {
+          const { articles: fetchedArticles, total } = response.data;
+          const mappedArticles = fetchedArticles.map((a: any) => ({
+            id: a.id || a._id, // Fallback to '_id' if 'id' is undefined
+            title: a.title,
+            text: a.text,
+            author: a.author,
+            date: a.date,
+            image: a.image,
+            comments: a.comments || [],
+          }));
+          setArticles(mappedArticles);
+          setTotalPages(Math.ceil(total / ITEMS_PER_PAGE));
+        } else {
+          throw new Error(response.data?.message || "Failed to fetch articles");
+        }
+      } catch (error: any) {
+        console.error("Error fetching articles:", error);
+        toast.error(error.message || "Failed to fetch articles.");
+      } finally {
+        setIsLoading(false);
+      }
+    };
 
-  // Memoize feed articles based on followedUserIds and currentUser
-  const feedArticles = useMemo(() => {
-    return filteredArticles.filter(
-      (article) =>
-        followedUserIds.includes(article.userId) ||
-        article.userId === currentUser.id
-    );
-  }, [filteredArticles, followedUserIds, currentUser.id]);
-
-  // Paginate the feed articles
-  const paginatedArticles = paginate(feedArticles, currentPage, ITEMS_PER_PAGE);
-  const totalPages = Math.ceil(feedArticles.length / ITEMS_PER_PAGE);
+    fetchArticles();
+  }, [currentPage, debouncedSearchTerm, followedUsernames, refresh]);
 
   const handlePageClick = (pageNumber: number) => {
     setCurrentPage(pageNumber);
   };
 
   const handlePreviousPage = () => {
-    if (currentPage > 1) {
-      setCurrentPage(currentPage - 1);
-    }
+    if (currentPage > 1) setCurrentPage(currentPage - 1);
   };
 
   const handleNextPage = () => {
-    if (currentPage < totalPages) {
-      setCurrentPage(currentPage + 1);
-    }
+    if (currentPage < totalPages) setCurrentPage(currentPage + 1);
   };
 
   return (
     <div>
-      {/* Search bar to filter posts */}
       <SearchBar searchTerm={searchTerm} setSearchTerm={setSearchTerm} />
-
-      {/* Displaying the list of articles */}
       <div className="space-y-4 mt-4">
-        {paginatedArticles.length > 0 ? (
-          paginatedArticles.map((article) => (
-            <Post key={article.id} article={article} />
+        {isLoading ? (
+          <div className="space-y-4">
+            {Array.from({ length: ITEMS_PER_PAGE }).map((_, index) => (
+              <div key={index} className="animate-pulse flex space-x-4">
+                <div className="rounded-full bg-gray-300 h-10 w-10"></div>
+                <div className="flex-1 space-y-4 py-1">
+                  <div className="h-4 bg-gray-300 rounded w-3/4"></div>
+                  <div className="space-y-2">
+                    <div className="h-4 bg-gray-300 rounded"></div>
+                    <div className="h-4 bg-gray-300 rounded w-5/6"></div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : articles.length > 0 ? (
+          articles.map((article) => (
+            <Post
+              key={article.id}
+              article={article}
+              currentUser={currentUser}
+            />
           ))
         ) : (
           <p className="text-sm text-gray-500">
-            No posts to display. Follow users to see their posts.
+            No posts to display. Follow users to see their posts or try a
+            different search.
           </p>
         )}
       </div>
 
-      {/* Pagination Controls */}
       {totalPages > 1 && (
         <div className="mt-6">
           <Pagination>
-            <PaginationPrevious
-              onClick={handlePreviousPage}
-              className={currentPage === 1 ? "disabled" : ""}
-            >
-              <PaginationLink href="#">Previous</PaginationLink>
-            </PaginationPrevious>
             <PaginationContent>
+              <PaginationItem>
+                <PaginationPrevious
+                  href="#"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    handlePreviousPage();
+                  }}
+                  className={
+                    currentPage === 1 ? "pointer-events-none opacity-50" : ""
+                  }
+                />
+              </PaginationItem>
+
               {Array.from({ length: totalPages }).map((_, index) => (
-                <PaginationItem
-                  key={index}
-                  className={index + 1 === currentPage ? "active" : ""}
-                >
+                <PaginationItem key={index}>
                   <PaginationLink
                     href="#"
                     onClick={(e) => {
                       e.preventDefault();
                       handlePageClick(index + 1);
                     }}
+                    isActive={currentPage === index + 1}
                   >
                     {index + 1}
                   </PaginationLink>
                 </PaginationItem>
               ))}
+
+              <PaginationItem>
+                <PaginationNext
+                  href="#"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    handleNextPage();
+                  }}
+                  className={
+                    currentPage === totalPages
+                      ? "pointer-events-none opacity-50"
+                      : ""
+                  }
+                />
+              </PaginationItem>
             </PaginationContent>
-            <PaginationNext
-              onClick={handleNextPage}
-              className={currentPage === totalPages ? "disabled" : ""}
-            >
-              <PaginationLink href="#">Next</PaginationLink>
-            </PaginationNext>
           </Pagination>
         </div>
       )}
