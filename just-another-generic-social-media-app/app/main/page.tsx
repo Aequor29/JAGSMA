@@ -1,4 +1,5 @@
-// app/main/page.tsx
+// /app/main/page.tsx
+
 "use client";
 
 import FriendsBar from "@/components/main/FriendsBar";
@@ -8,15 +9,7 @@ import Feed from "@/components/main/Feed";
 import { useState, useEffect } from "react";
 import { useAuth } from "@/app/context/AuthContext";
 import { apiFetch } from "@/utils/api";
-
-interface Article {
-  id: number;
-  userId: number;
-  title: string;
-  body: string;
-  createdAt: string;
-  author: string;
-}
+import { toast } from "react-toastify"; // Ensure react-toastify is installed
 
 interface User {
   username: string;
@@ -27,11 +20,9 @@ interface User {
 export default function Main() {
   const { user } = useAuth();
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [articles, setArticles] = useState<Article[]>([]);
-  const [users, setUsers] = useState<User[]>([]);
   const [followedUsernames, setFollowedUsernames] = useState<string[]>([]);
+  const [refreshFeed, setRefreshFeed] = useState<boolean>(false);
 
-  // Fetch current user's data
   useEffect(() => {
     const fetchUserData = async () => {
       if (user) {
@@ -47,9 +38,12 @@ export default function Main() {
               headline: headlineRes.data.headline,
               avatarUrl: avatarRes.data.avatar,
             });
+          } else {
+            throw new Error("Failed to fetch user data.");
           }
-        } catch (error) {
+        } catch (error: any) {
           console.error("Error fetching user data:", error);
+          toast.error(error.message || "Failed to fetch user data.");
         }
       }
     };
@@ -57,17 +51,22 @@ export default function Main() {
     fetchUserData();
   }, [user]);
 
-  // Fetch followed users
   useEffect(() => {
     const fetchFollowing = async () => {
       if (user) {
         try {
           const response = await apiFetch({ endpoint: "/following" });
           if (response.status === 200) {
-            setFollowedUsernames(response.data.following);
+            // Include the current user's username to display their posts
+            setFollowedUsernames(
+              Array.from(new Set([...response.data.following, user.username]))
+            );
+          } else {
+            throw new Error("Failed to fetch following list.");
           }
-        } catch (error) {
+        } catch (error: any) {
           console.error("Error fetching following list:", error);
+          toast.error(error.message || "Failed to fetch following list.");
         }
       }
     };
@@ -75,19 +74,23 @@ export default function Main() {
     fetchFollowing();
   }, [user]);
 
-  // Handle follow/unfollow
   const handleFollow = async (usernameToFollow: string) => {
     try {
       const response = await apiFetch({
         endpoint: `/following/${usernameToFollow}`,
         method: "PUT",
       });
-
       if (response.status === 200) {
-        setFollowedUsernames(response.data.following);
+        setFollowedUsernames(
+          Array.from(new Set([...response.data.following, user?.username]))
+        );
+        toast.success(`Followed ${usernameToFollow} successfully!`);
+      } else {
+        throw new Error(response.data?.message || "Failed to follow user.");
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error following user:", error);
+      toast.error(error.message || "Failed to follow user.");
     }
   };
 
@@ -97,16 +100,18 @@ export default function Main() {
         endpoint: `/following/${usernameToUnfollow}`,
         method: "DELETE",
       });
-
       if (response.status === 200) {
         setFollowedUsernames(response.data.following);
+        toast.success(`Unfollowed ${usernameToUnfollow} successfully!`);
+      } else {
+        throw new Error(response.data?.message || "Failed to unfollow user.");
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error unfollowing user:", error);
+      toast.error(error.message || "Failed to unfollow user.");
     }
   };
 
-  // Update headline
   const updateHeadline = async (newHeadline: string) => {
     try {
       const response = await apiFetch({
@@ -120,26 +125,35 @@ export default function Main() {
           ...currentUser,
           headline: response.data.headline,
         });
+        toast.success("Headline updated successfully!");
+      } else {
+        throw new Error(response.data?.message || "Failed to update headline.");
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error updating headline:", error);
+      toast.error(error.message || "Failed to update headline.");
     }
   };
 
-  // Add new post handler
-  const addNewPost = async (newPost: Article) => {
+  const addNewPost = async (title: string, text: string, image?: string) => {
     try {
       const response = await apiFetch({
-        endpoint: "/article",
+        endpoint: "/articles",
         method: "POST",
-        body: { title: newPost.title, body: newPost.body },
+        body: { title, text, image },
       });
 
-      if (response.status === 200) {
-        setArticles([response.data.article, ...articles]);
+      if (response.status === 201) {
+        // Trigger feed refresh
+        setRefreshFeed((prev) => !prev);
+        toast.success("Post created successfully!");
+      } else {
+        throw new Error(response.data?.message || "Failed to create post.");
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error adding new post:", error);
+      toast.error(error.message || "Failed to create post. Please try again.");
+      throw error; // Re-throw to allow NewPost component to handle it if needed
     }
   };
 
@@ -152,7 +166,9 @@ export default function Main() {
       <SidebarProvider>
         <FriendsBar
           currentUser={currentUser}
-          followedUsernames={followedUsernames}
+          followedUsernames={followedUsernames.filter(
+            (username) => username !== currentUser.username
+          )}
           onFollow={handleFollow}
           onUnfollow={handleUnfollow}
           onUpdateHeadline={updateHeadline}
@@ -164,9 +180,9 @@ export default function Main() {
           </div>
           <div>
             <Feed
-              articles={articles}
               followedUsernames={followedUsernames}
               currentUser={currentUser}
+              refresh={refreshFeed}
             />
           </div>
         </div>

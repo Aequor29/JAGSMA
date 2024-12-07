@@ -1,3 +1,5 @@
+// /components/main/Feed.tsx
+
 "use client";
 import { useState, useEffect } from "react";
 import Post from "./Post";
@@ -12,6 +14,14 @@ import {
 } from "../ui/pagination";
 import { useDebounce } from "@/hooks/useDebounce";
 import { apiFetch } from "@/utils/api";
+import { toast } from "react-toastify"; // Ensure react-toastify is installed
+
+interface Comment {
+  _id: string;
+  author: string;
+  text: string;
+  date: string;
+}
 
 interface Article {
   id: string;
@@ -20,16 +30,22 @@ interface Article {
   author: string;
   date: string;
   image?: string;
+  comments?: Comment[];
 }
 
 interface FeedProps {
   followedUsernames: string[];
   currentUser: { username: string };
+  refresh: boolean; // Trigger refetch when this changes
 }
 
 const ITEMS_PER_PAGE = 10;
 
-export default function Feed({ followedUsernames, currentUser }: FeedProps) {
+export default function Feed({
+  followedUsernames,
+  currentUser,
+  refresh,
+}: FeedProps) {
   const [articles, setArticles] = useState<Article[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -37,12 +53,10 @@ export default function Feed({ followedUsernames, currentUser }: FeedProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const debouncedSearchTerm = useDebounce(searchTerm, 300);
 
-  // Fetch articles with pagination and search
   useEffect(() => {
     const fetchArticles = async () => {
       setIsLoading(true);
       try {
-        // Construct query parameters
         const queryParams = new URLSearchParams({
           page: currentPage.toString(),
           limit: ITEMS_PER_PAGE.toString(),
@@ -53,46 +67,64 @@ export default function Feed({ followedUsernames, currentUser }: FeedProps) {
         const response = await apiFetch({
           endpoint: `/articles?${queryParams}`,
         });
-
         if (response.status === 200) {
-          setArticles(response.data.articles);
-          setTotalPages(Math.ceil(response.data.total / ITEMS_PER_PAGE));
+          const { articles: fetchedArticles, total } = response.data;
+          const mappedArticles = fetchedArticles.map((a: any) => ({
+            id: a.id || a._id, // Fallback to '_id' if 'id' is undefined
+            title: a.title,
+            text: a.text,
+            author: a.author,
+            date: a.date,
+            image: a.image,
+            comments: a.comments || [],
+          }));
+          setArticles(mappedArticles);
+          setTotalPages(Math.ceil(total / ITEMS_PER_PAGE));
         } else {
           throw new Error(response.data?.message || "Failed to fetch articles");
         }
-      } catch (error) {
+      } catch (error: any) {
         console.error("Error fetching articles:", error);
+        toast.error(error.message || "Failed to fetch articles.");
       } finally {
         setIsLoading(false);
       }
     };
 
     fetchArticles();
-  }, [currentPage, debouncedSearchTerm, followedUsernames]);
+  }, [currentPage, debouncedSearchTerm, followedUsernames, refresh]);
 
   const handlePageClick = (pageNumber: number) => {
     setCurrentPage(pageNumber);
   };
 
   const handlePreviousPage = () => {
-    if (currentPage > 1) {
-      setCurrentPage(currentPage - 1);
-    }
+    if (currentPage > 1) setCurrentPage(currentPage - 1);
   };
 
   const handleNextPage = () => {
-    if (currentPage < totalPages) {
-      setCurrentPage(currentPage + 1);
-    }
+    if (currentPage < totalPages) setCurrentPage(currentPage + 1);
   };
 
   return (
     <div>
       <SearchBar searchTerm={searchTerm} setSearchTerm={setSearchTerm} />
-
       <div className="space-y-4 mt-4">
         {isLoading ? (
-          <p>Loading posts...</p>
+          <div className="space-y-4">
+            {Array.from({ length: ITEMS_PER_PAGE }).map((_, index) => (
+              <div key={index} className="animate-pulse flex space-x-4">
+                <div className="rounded-full bg-gray-300 h-10 w-10"></div>
+                <div className="flex-1 space-y-4 py-1">
+                  <div className="h-4 bg-gray-300 rounded w-3/4"></div>
+                  <div className="space-y-2">
+                    <div className="h-4 bg-gray-300 rounded"></div>
+                    <div className="h-4 bg-gray-300 rounded w-5/6"></div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
         ) : articles.length > 0 ? (
           articles.map((article) => (
             <Post

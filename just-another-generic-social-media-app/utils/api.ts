@@ -1,4 +1,4 @@
-// utils/api.ts
+// /utils/api.ts
 
 export const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL as string;
 
@@ -43,9 +43,13 @@ export const apiFetch = async ({
       data = null;
     }
 
+    if (!response.ok) {
+      throw new Error(data?.message || "API request failed.");
+    }
+
     return { status: response.status, data };
-  } catch (error) {
+  } catch (error: any) {
     console.error("apiFetch error:", error);
-    return { status: 500, data: null };
+    throw error; // Propagate the error to be handled by the caller
   }
 };

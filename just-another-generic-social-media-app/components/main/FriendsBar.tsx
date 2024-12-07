@@ -108,9 +108,9 @@ export default function FriendsBar({
     if (!usernameToFollow) return;
 
     try {
-      // Verify user exists first
+      // Verify user exists by checking their headline
       const headlineRes = await apiFetch({
-        endpoint: `/user/${usernameToFollow}`,
+        endpoint: `/headline/${usernameToFollow}`,
       });
 
       if (headlineRes.status === 404) {
